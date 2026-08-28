@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Congregation Admin — Members, Bookings & Reminders</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      fontFeatureSettings: { tabular: '"tnum"' },
+    }
+  }
+}
+</script>
+<style>
+  html, body { font-family: 'Inter', system-ui, sans-serif; }
+  body { -webkit-font-smoothing: antialiased; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  /* Custom scrollbar for main areas */
+  .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .thin-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  /* Drawer transitions */
+  .drawer { transform: translateX(100%); transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1); }
+  .drawer.open { transform: translateX(0); }
+  .drawer-backdrop { opacity: 0; pointer-events: none; transition: opacity 200ms ease; }
+  .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+  /* Modal */
+  .modal { opacity: 0; pointer-events: none; transition: opacity 160ms ease; }
+  .modal.open { opacity: 1; pointer-events: auto; }
+  .modal-content { transform: scale(0.98) translateY(4px); transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1); }
+  .modal.open .modal-content { transform: scale(1) translateY(0); }
+  /* Focus visible ring */
+  .focus-ring:focus-visible { outline: none; box-shadow: 0 0 0 2px white, 0 0 0 4px #6366f1; }
+  /* Reduce motion */
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  /* Sparkline gradient */
+  .sparkline path.area { opacity: 0.15; }
+  /* Loading skeleton */
+  @keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  .skeleton {
+    background: linear-gradient(90deg, #e2e8f0 0%, #f1f5f9 50%, #e2e8f0 100%);
+    background-size: 800px 100%;
+    animation: shimmer 1.4s infinite linear;
+  }
+  /* Sidebar collapsed state */
+  .sidebar-collapsed .nav-label,
+  .sidebar-collapsed .sidebar-brand-text,
+  .sidebar-collapsed .sidebar-section-label,
+  .sidebar-collapsed .sidebar-user-meta { display: none; }
+  .sidebar-collapsed .nav-item { justify-content: center; padding-left: 0.75rem; padding-right: 0.75rem; }
+  .sidebar-collapsed .sidebar-user { justify-content: center; padding-left: 0.75rem; padding-right: 0.75rem; }
+  .sidebar-collapsed { width: 4.5rem !important; }
+  /* Active nav indicator */
+  .nav-item.active { background: #eef2ff; color: #4338ca; }
+  .nav-item.active svg { color: #4f46e5; }
+  .nav-item.active::before {
+    content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px;
+    background: #4f46e5; border-radius: 0 2px 2px 0;
+  }
+  .sidebar-collapsed .nav-item.active::before { display: none; }
+  /* Calendar day cell */
+  .cal-day { min-height: 96px; }
+  .cal-day.other-month { background: #f8fafc; color: #94a3b8; }
+  .cal-day.today { box-shadow: inset 0 0 0 2px #4f46e5; }
+  .cal-day:hover { background: #f8fafc; cursor: pointer; }
+  /* Row hover with subtle elevation cue */
+  .row-hover { transition: background-color 120ms ease; }
+  .row-hover:hover { background-color: #f8fafc; }
+  /* Mobile: hide sidebar by default when small; show as drawer on toggle */
+  @media (max-width: 768px) {
+    .sidebar { position: fixed; z-index: 50; height: 100vh; transform: translateX(-100%); transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1); }
+    .sidebar.mobile-open { transform: translateX(0); }
+    .mobile-backdrop { display: none; }
+    .mobile-backdrop.open { display: block; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); z-index: 40; }
+  }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<!-- ============================================================
+     LAYOUT SHELL
+     ============================================================ -->
+<div class="flex h-screen overflow-hidden">
+
+  <!-- Mobile backdrop -->
+  <div id="mobileBackdrop" class="mobile-backdrop" onclick="closeMobileSidebar()"></div>
+
+  <!-- =========================================================
+       SIDEBAR
+       ========================================================= -->
+  <aside id="sidebar" class="sidebar w-64 shrink-0 bg-white border-r border-slate-200 flex flex-col transition-all duration-200">
+
+    <!-- Brand -->
+    <div class="h-16 px-4 flex items-center gap-3 border-b border-slate-200">
+      <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
+        <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div class="sidebar-brand-text">
+        <div class="font-semibold text-slate-900 leading-tight">Convene</div>
+        <div class="text-xs text-slate-500 leading-tight">Admin Console</div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 overflow-y-auto thin-scroll py-4 px-2 space-y-6">
+
+      <div class="space-y-1">
+        <div class="sidebar-section-label px-3 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Manage</div>
+
+        <button onclick="showScreen('dashboard')" class="nav-item active w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 relative focus-ring" data-screen="dashboard">
+          <svg class="w-5 h-5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          <span class="nav-label">Dashboard</span>
+        </button>
+
+        <button onclick="showScreen('members')" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 relative focus-ring" data-screen="members">
+          <svg class="w-5 h-5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="nav-label flex-1 text-left">Members</span>
+          <span class="nav-label text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full tabular">512</span>
+        </button>
+
+        <button onclick="showScreen('bookings')" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 relative focus-ring" data-screen="bookings">
+          <svg class="w-5 h-5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="nav-label">Bookings</span>
+        </button>
+
+        <button onclick="showScreen('reminders')" class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 relative focus-ring" data-screen="reminders">
+          <svg class="w-5 h-5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="nav-label flex-1 text-left">Reminders</span>
+          <span class="nav-label text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full tabular">7</span>
+        </button>
+      </div>
+
+      <div class="space-y-1">
+        <div class="sidebar-section-label px-3 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Insights</div>
+        <button class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 relative focus-ring">
+          <svg class="w-5 h-5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span class="nav-label">Reports</span>
+        </button>
+        <button class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 relative focus-ring">
+          <svg class="w-5 h-5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span class="nav-label">Audit Log</span>
+        </button>
+        <button class="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 relative focus-ring">
+          <svg class="w-5 h-5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="nav-label">Settings</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- User at bottom -->
+    <div class="border-t border-slate-200 p-3">
+      <div class="sidebar-user flex items-center gap-3 p-2 rounded-md hover:bg-slate-50 cursor-pointer">
+        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white text-sm font-semibold shrink-0">DA</div>
+        <div class="sidebar-user-meta flex-1 min-w-0">
+          <div class="text-sm font-medium text-slate-900 truncate">Dawit A.</div>
+          <div class="text-xs text-slate-500 truncate">Admin · Convene HQ</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- =========================================================
+       MAIN AREA
+       ========================================================= -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- ==============
+         TOP HEADER
+         ============== -->
+    <header class="h-16 bg-white border-b border-slate-200 flex items-center gap-3 px-4 md:px-6 shrink-0">
+      <button onclick="toggleSidebar()" class="p-2 rounded-md hover:bg-slate-100 focus-ring text-slate-600" aria-label="Toggle sidebar">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+
+      <!-- Global search -->
+      <div class="flex-1 max-w-xl">
+        <div class="relative">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="globalSearch" type="text" placeholder="Search members, bookings, reminders…" class="w-full h-9 pl-9 pr-16 rounded-md border border-slate-200 bg-slate-50 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white" />
+          <kbd class="hidden md:inline-flex items-center gap-1 absolute right-2 top-1/2 -translate-y-1/2 h-6 px-1.5 rounded border border-slate-200 bg-white text-[10px] font-medium text-slate-500">
+            <span class="text-slate-400">⌘</span>K
+          </kbd>
+        </div>
+      </div>
+
+      <!-- Date filter -->
+      <div class="hidden md:flex">
+        <button class="h-9 px-3 flex items-center gap-2 border border-slate-200 rounded-md text-sm text-slate-700 hover:bg-slate-50 focus-ring">
+          <svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span class="tabular">Last 30 days</span>
+          <svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+
+      <!-- Notifications -->
+      <button class="relative p-2 rounded-md hover:bg-slate-100 focus-ring text-slate-600" aria-label="Notifications">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center ring-2 ring-white">3</span>
+      </button>
+
+      <!-- User dropdown -->
+      <div class="flex items-center gap-2 pl-2 border-l border-slate-200">
+        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white text-xs font-semibold">DA</div>
+        <svg class="w-4 h-4 text-slate-400 hidden md:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </header>
+
+    <!-- ==============
+         SCREENS
+         ============== -->
+    <main class="flex-1 overflow-y-auto thin-scroll">
+
+      <!-- ============================================================
+           SCREEN 1: EXECUTIVE OVERVIEW DASHBOARD
+           ============================================================ -->
+      <section id="screen-dashboard" class="screen p-4 md:p-6 space-y-6">
+
+        <!-- Screen title -->
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-2xl font-semibold text-slate-900 tracking-tight">Overview</h1>
+            <p class="text-sm text-slate-500 mt-1">Good morning, Dawit. Here's what's happening across your congregation this week.</p>
+          </div>
+          <button onclick="openModal('bookingModal')" class="inline-flex items-center gap-2 h-10 px-4 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus-ring shadow-sm">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New booking
+          </button>
+        </div>
+
+        <!-- KPI cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+          <!-- KPI 1 -->
+          <div class="bg-white border border-slate-200 rounded-lg p-5 hover:border-slate-300 transition-colors">
+            <div class="flex items-start justify-between">
+              <div class="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <span class="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                +12%
+              </span>
+            </div>
+            <div class="mt-4 flex items-end justify-between gap-3">
+              <div>
+                <div class="text-3xl font-semibold text-slate-900 tabular tracking-tight">512</div>
+                <div class="text-sm text-slate-500 mt-1">Active members</div>
+              </div>
+              <!-- Sparkline signature -->
+              <svg class="sparkline text-indigo-500" width="80" height="32" viewBox="0 0 80 32" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="sparkGrad1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="currentColor"/><stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient>
+                </defs>
+                <path class="area" d="M0,26 L8,24 L16,22 L24,20 L32,18 L40,16 L48,14 L56,12 L64,8 L72,10 L80,6 L80,32 L0,32 Z" fill="url(#sparkGrad1)"/>
+                <path d="M0,26 L8,24 L16,22 L24,20 L32,18 L40,16 L48,14 L56,12 L64,8 L72,10 L80,6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- KPI 2 -->
+          <div class="bg-white border border-slate-200 rounded-lg p-5 hover:border-slate-300 transition-colors">
+            <div class="flex items-start justify-between">
+              <div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </div>
+              <span class="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                +5%
+              </span>
+            </div>
+            <div class="mt-4 flex items-end justify-between gap-3">
+              <div>
+                <div class="text-3xl font-semibold text-slate-900 tabular tracking-tight">38</div>
+                <div class="text-sm text-slate-500 mt-1">Upcoming bookings</div>
+              </div>
+              <svg class="sparkline text-emerald-500" width="80" height="32" viewBox="0 0 80 32" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="sparkGrad2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="currentColor"/><stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient>
+                </defs>
+                <path class="area" d="M0,18 L8,20 L16,14 L24,16 L32,10 L40,14 L48,8 L56,12 L64,6 L72,10 L80,4 L80,32 L0,32 Z" fill="url(#sparkGrad2)"/>
+                <path d="M0,18 L8,20 L16,14 L24,16 L32,10 L40,14 L48,8 L56,12 L64,6 L72,10 L80,4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- KPI 3 -->
+          <div class="bg-white border border-slate-200 rounded-lg p-5 hover:border-slate-300 transition-colors">
+            <div class="flex items-start justify-between">
+              <div class="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                <svg class="w-5 h-5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              </div>
+              <span class="inline-flex items-center gap-1 text-xs font-medium text-rose-700 bg-rose-50 px-2 py-1 rounded-md">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+                -3
+              </span>
+            </div>
+            <div class="mt-4 flex items-end justify-between gap-3">
+              <div>
+                <div class="text-3xl font-semibold text-slate-900 tabular tracking-tight">7</div>
+                <div class="text-sm text-slate-500 mt-1">Pending reminders</div>
+              </div>
+              <svg class="sparkline text-amber-500" width="80" height="32" viewBox="0 0 80 32" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="sparkGrad3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="currentColor"/><stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient>
+                </defs>
+                <path class="area" d="M0,8 L8,12 L16,10 L24,14 L32,12 L40,16 L48,14 L56,18 L64,16 L72,20 L80,22 L80,32 L0,32 Z" fill="url(#sparkGrad3)"/>
+                <path d="M0,8 L8,12 L16,10 L24,14 L32,12 L40,16 L48,14 L56,18 L64,16 L72,20 L80,22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- KPI 4 -->
+          <div class="bg-white border border-slate-200 rounded-lg p-5 hover:border-slate-300 transition-colors">
+            <div class="flex items-start justify-between">
+              <div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
+                <svg class="w-5 h-5 text-slate-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+              </div>
+              <span class="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                +2.4%
+              </span>
+            </div>
+            <div class="mt-4 flex items-end justify-between gap-3">
+              <div>
+                <div class="text-3xl font-semibold text-slate-900 tabular tracking-tight">94.2<span class="text-lg text-slate-400">%</span></div>
+                <div class="text-sm text-slate-500 mt-1">Completion rate</div>
+              </div>
+              <svg class="sparkline text-slate-500" width="80" height="32" viewBox="0 0 80 32" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="sparkGrad4" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="currentColor"/><stop offset="100%" stop-color="currentColor" stop-opacity="0"/></linearGradient>
+                </defs>
+                <path class="area" d="M0,20 L8,18 L16,14 L24,16 L32,12 L40,10 L48,12 L56,8 L64,10 L72,6 L80,4 L80,32 L0,32 Z" fill="url(#sparkGrad4)"/>
+                <path d="M0,20 L8,18 L16,14 L24,16 L32,12 L40,10 L48,12 L56,8 L64,10 L72,6 L80,4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main grid: bookings table (left) + widget stack (right) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          <!-- Bookings table (spans 2 cols) -->
+          <div class="lg:col-span-2 bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <div class="p-5 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 class="text-base font-semibold text-slate-900">Recent & upcoming bookings</h2>
+                <p class="text-xs text-slate-500 mt-0.5">38 total · 12 need attention</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="relative">
+                  <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input type="text" placeholder="Filter bookings…" class="h-8 pl-8 pr-3 rounded-md border border-slate-200 bg-white text-xs w-40 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                </div>
+                <select class="h-8 px-2 rounded-md border border-slate-200 bg-white text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option>All statuses</option>
+                  <option>Confirmed</option>
+                  <option>Pending</option>
+                  <option>Cancelled</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto thin-scroll">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-slate-200 bg-slate-50/50">
+                    <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-5">Booking</th>
+                    <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Member</th>
+                    <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Service</th>
+                    <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Date & time</th>
+                    <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Status</th>
+                    <th class="text-right font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-5">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboardBookingsTable" class="divide-y divide-slate-100">
+                  <!-- populated by JS -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+              <div class="tabular">Showing 6 of 38</div>
+              <div class="flex items-center gap-1">
+                <button class="h-7 w-7 rounded border border-slate-200 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40" disabled>
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <button class="h-7 min-w-7 px-2 rounded bg-indigo-600 text-white tabular text-xs font-medium">1</button>
+                <button class="h-7 min-w-7 px-2 rounded border border-slate-200 hover:bg-slate-50 tabular">2</button>
+                <button class="h-7 min-w-7 px-2 rounded border border-slate-200 hover:bg-slate-50 tabular">3</button>
+                <button class="h-7 min-w-7 px-2 rounded border border-slate-200 hover:bg-slate-50 tabular">…</button>
+                <button class="h-7 w-7 rounded border border-slate-200 flex items-center justify-center hover:bg-slate-50">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Widget stack (right) -->
+          <div class="space-y-6">
+
+            <!-- Urgent reminders -->
+            <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+              <div class="p-5 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h2 class="text-base font-semibold text-slate-900">Urgent reminders</h2>
+                  <p class="text-xs text-slate-500 mt-0.5">Due this week</p>
+                </div>
+                <button class="text-xs text-indigo-600 font-medium hover:text-indigo-700" onclick="showScreen('reminders')">View all</button>
+              </div>
+              <ul id="dashboardReminders" class="divide-y divide-slate-100">
+                <!-- populated by JS -->
+              </ul>
+            </div>
+
+            <!-- Quick member lookup -->
+            <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+              <div class="p-5 border-b border-slate-200">
+                <h2 class="text-base font-semibold text-slate-900">Recent member activity</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Last 24 hours</p>
+              </div>
+              <ul id="memberActivity" class="divide-y divide-slate-100">
+                <!-- populated by JS -->
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           SCREEN 2: MEMBER MANAGEMENT DIRECTORY
+           ============================================================ -->
+      <section id="screen-members" class="screen hidden p-4 md:p-6 space-y-6">
+
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-2xl font-semibold text-slate-900 tracking-tight">Members</h1>
+            <p class="text-sm text-slate-500 mt-1">512 active · 34 pending renewal · 18 suspended</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="inline-flex items-center gap-2 h-10 px-3 border border-slate-200 bg-white text-sm font-medium rounded-md hover:bg-slate-50 focus-ring text-slate-700">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export CSV
+            </button>
+            <button onclick="openModal('memberModal')" class="inline-flex items-center gap-2 h-10 px-4 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus-ring shadow-sm">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add member
+            </button>
+          </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="bg-white border border-slate-200 rounded-lg p-4 flex items-center gap-3 flex-wrap">
+          <div class="relative flex-1 min-w-64">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="memberSearch" type="text" placeholder="Search by name, email, or member ID…" class="w-full h-9 pl-9 pr-3 rounded-md border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+          </div>
+          <select class="h-9 px-3 rounded-md border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option>All tiers</option>
+            <option>Standard</option>
+            <option>Premium</option>
+            <option>Clergy</option>
+          </select>
+          <select class="h-9 px-3 rounded-md border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option>All statuses</option>
+            <option>Active</option>
+            <option>Renewal due</option>
+            <option>Suspended</option>
+          </select>
+          <select class="h-9 px-3 rounded-md border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option>Any join date</option>
+            <option>This month</option>
+            <option>This year</option>
+            <option>Custom range…</option>
+          </select>
+          <!-- View toggle -->
+          <div class="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5">
+            <button id="viewToggleTable" onclick="setMemberView('table')" class="h-8 px-3 rounded flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-white shadow-sm">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              Table
+            </button>
+            <button id="viewToggleGrid" onclick="setMemberView('grid')" class="h-8 px-3 rounded flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              Grid
+            </button>
+          </div>
+        </div>
+
+        <!-- Table view -->
+        <div id="memberTableView" class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div class="overflow-x-auto thin-scroll">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 bg-slate-50/50">
+                  <th class="w-8 py-3 px-5"><input type="checkbox" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" /></th>
+                  <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Member</th>
+                  <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Contact</th>
+                  <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Status</th>
+                  <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Bookings</th>
+                  <th class="text-left font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-3">Last active</th>
+                  <th class="text-right font-medium text-slate-500 text-xs uppercase tracking-wider py-3 px-5"></th>
+                </tr>
+              </thead>
+              <tbody id="memberTable" class="divide-y divide-slate-100">
+                <!-- populated by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Grid view -->
+        <div id="memberGridView" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <!-- populated by JS -->
+        </div>
+      </section>
+
+      <!-- ============================================================
+           SCREEN 3: INTERACTIVE BOOKING & SCHEDULING HUB
+           ============================================================ -->
+      <section id="screen-bookings" class="screen hidden p-4 md:p-6 space-y-6">
+
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-2xl font-semibold text-slate-900 tracking-tight">Bookings & scheduling</h1>
+            <p class="text-sm text-slate-500 mt-1">Schedule appointments, assign staff, and send reminders.</p>
+          </div>
+          <button onclick="openModal('bookingModal')" class="inline-flex items-center gap-2 h-10 px-4 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus-ring shadow-sm">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Book appointment
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+          <!-- Calendar (2 cols) -->
+          <div class="xl:col-span-2 bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <!-- Calendar header -->
+            <div class="p-5 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3">
+              <div class="flex items-center gap-3">
+                <button class="h-8 w-8 rounded border border-slate-200 flex items-center justify-center hover:bg-slate-50">
+                  <svg class="w-4 h-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <h2 class="text-lg font-semibold text-slate-900 tabular">March 2026</h2>
+                <button class="h-8 w-8 rounded border border-slate-200 flex items-center justify-center hover:bg-slate-50">
+                  <svg class="w-4 h-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <button class="h-8 px-3 text-xs font-medium text-slate-700 border border-slate-200 rounded hover:bg-slate-50">Today</button>
+              </div>
+              <div class="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5">
+                <button class="h-8 px-3 rounded text-xs font-medium text-slate-500 hover:text-slate-700">Day</button>
+                <button class="h-8 px-3 rounded text-xs font-medium text-slate-500 hover:text-slate-700">Week</button>
+                <button class="h-8 px-3 rounded text-xs font-medium text-slate-700 bg-white shadow-sm">Month</button>
+                <button class="h-8 px-3 rounded text-xs font-medium text-slate-500 hover:text-slate-700">Agenda</button>
+              </div>
+            </div>
+
+            <!-- Weekday headers -->
+            <div class="grid grid-cols-7 border-b border-slate-200 bg-slate-50/50">
+              <div class="text-xs font-medium text-slate-500 uppercase tracking-wider py-2 text-center">Mon</div>
+              <div class="text-xs font-medium text-slate-500 uppercase tracking-wider py-2 text-center">Tue</div>
+              <div class="text-xs font-medium text-slate-500 uppercase tracking-wider py-2 text-center">Wed</div>
+              <div class="text-xs font-medium text-slate-500 uppercase tracking-wider py-2 text-center">Thu</div>
+              <div class="text-xs font-medium text-slate-500 uppercase tracking-wider py-2 text-center">Fri</div>
+              <div class="text-xs font-medium text-slate-500 uppercase tracking-wider py-2 text-center">Sat</div>
+              <div class="text-xs font-medium text-slate-500 uppercase tracking-wider py-2 text-center">Sun</div>
+            </div>
+
+            <!-- Calendar grid -->
+            <div id="calendarGrid" class="grid grid-cols-7">
+              <!-- populated by JS -->
+            </div>
+
+            <!-- Legend -->
+            <div class="p-4 border-t border-slate-200 flex items-center gap-4 text-xs text-slate-600 flex-wrap">
+              <span class="font-medium text-slate-500">Color key:</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>Confirmed</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span>Pending</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span>Cancelled</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-indigo-500"></span>Consultation</span>
+            </div>
+          </div>
+
+          <!-- Booking details panel -->
+          <div class="bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col">
+            <div class="p-5 border-b border-slate-200">
+              <h2 class="text-base font-semibold text-slate-900">Booking details</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Click a day to see appointments</p>
+            </div>
+            <div id="bookingDetailsPanel" class="flex-1 overflow-y-auto thin-scroll">
+              <!-- populated by JS -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           SCREEN 4: AUTOMATED REMINDERS & TASKS CENTER
+           ============================================================ -->
+      <section id="screen-reminders" class="screen hidden p-4 md:p-6 space-y-6">
+
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-2xl font-semibold text-slate-900 tracking-tight">Reminders & tasks</h1>
+            <p class="text-sm text-slate-500 mt-1">Automated follow-ups and manual tasks across every channel.</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          <!-- Left: pipeline -->
+          <div class="lg:col-span-2 bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <!-- Tabs -->
+            <div class="border-b border-slate-200 px-5 flex items-center gap-1">
+              <button onclick="setReminderTab('upcoming')" id="tabUpcoming" class="h-12 px-4 text-sm font-medium text-slate-900 border-b-2 border-indigo-600 -mb-px inline-flex items-center gap-2">
+                Upcoming <span class="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded tabular">7</span>
+              </button>
+              <button onclick="setReminderTab('overdue')" id="tabOverdue" class="h-12 px-4 text-sm font-medium text-slate-500 hover:text-slate-700 inline-flex items-center gap-2">
+                Overdue <span class="text-xs bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded tabular">2</span>
+              </button>
+              <button onclick="setReminderTab('completed')" id="tabCompleted" class="h-12 px-4 text-sm font-medium text-slate-500 hover:text-slate-700 inline-flex items-center gap-2">
+                Completed <span class="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded tabular">124</span>
+              </button>
+            </div>
+
+            <!-- List -->
+            <ul id="reminderList" class="divide-y divide-slate-100">
+              <!-- populated by JS -->
+            </ul>
+          </div>
+
+          <!-- Right: create form -->
+          <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+            <div class="p-5 border-b border-slate-200">
+              <h2 class="text-base font-semibold text-slate-900">Create task</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Set up a custom reminder or task</p>
+            </div>
+            <form class="p-5 space-y-4" onsubmit="event.preventDefault(); showToast('Task created');">
+              <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Task title</label>
+                <input type="text" placeholder="Follow up about baptism preparation" class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Assign to member</label>
+                <div class="relative">
+                  <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input type="text" placeholder="Search members…" class="w-full h-9 pl-9 pr-3 rounded-md border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Due date</label>
+                <input type="date" class="w-full h-9 px-3 rounded-md border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Delivery channel</label>
+                <div class="grid grid-cols-3 gap-2">
+                  <label class="flex items-center gap-1.5 p-2 border border-indigo-200 bg-indigo-50 rounded-md cursor-pointer">
+                    <input type="radio" name="channel" checked class="text-indigo-600 focus:ring-indigo-500" />
+                    <span class="text-xs font-medium text-indigo-700">Email</span>
+                  </label>
+                  <label class="flex items-center gap-1.5 p-2 border border-slate-200 rounded-md cursor-pointer hover:bg-slate-50">
+                    <input type="radio" name="channel" class="text-indigo-600 focus:ring-indigo-500" />
+                    <span class="text-xs font-medium text-slate-700">SMS</span>
+                  </label>
+                  <label class="flex items-center gap-1.5 p-2 border border-slate-200 rounded-md cursor-pointer hover:bg-slate-50">
+                    <input type="radio" name="channel" class="text-indigo-600 focus:ring-indigo-500" />
+                    <span class="text-xs font-medium text-slate-700">Push</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1.5">Priority</label>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="h-8 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">Low</button>
+                  <button type="button" class="h-8 px-3 rounded-md border border-amber-300 bg-amber-50 text-xs font-medium text-amber-800">Medium</button>
+                  <button type="button" class="h-8 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50">High</button>
+                </div>
+              </div>
+              <button type="submit" class="w-full h-10 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus-ring shadow-sm">Create task</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- =========================================================
+     MEMBER DETAIL DRAWER (right side)
+     ========================================================= -->
+<div id="drawerBackdrop" class="drawer-backdrop fixed inset-0 bg-slate-900/40 z-40" onclick="closeDrawer()"></div>
+<aside id="memberDrawer" class="drawer fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
+  <div class="p-5 border-b border-slate-200 flex items-start justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <div id="drawerAvatar" class="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white text-lg font-semibold shrink-0">SG</div>
+      <div>
+        <div id="drawerName" class="font-semibold text-slate-900">Selamawit Girma</div>
+        <div id="drawerEmail" class="text-xs text-slate-500">selamawit.g@example.com</div>
+      </div>
+    </div>
+    <button onclick="closeDrawer()" class="p-1.5 rounded hover:bg-slate-100 text-slate-500">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="flex-1 overflow-y-auto thin-scroll p-5 space-y-5">
+
+    <!-- Quick stats -->
+    <div class="grid grid-cols-3 gap-2">
+      <div class="p-3 bg-slate-50 rounded-md text-center">
+        <div class="text-lg font-semibold text-slate-900 tabular" id="drawerBookings">14</div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Bookings</div>
+      </div>
+      <div class="p-3 bg-slate-50 rounded-md text-center">
+        <div class="text-lg font-semibold text-slate-900 tabular" id="drawerYears">3.2y</div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Member since</div>
+      </div>
+      <div class="p-3 bg-slate-50 rounded-md text-center">
+        <div class="text-lg font-semibold text-emerald-700 tabular">100%</div>
+        <div class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">Attendance</div>
+      </div>
+    </div>
+
+    <!-- Bio -->
+    <div>
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Bio & notes</h3>
+      <p class="text-sm text-slate-700 leading-relaxed">Regular Sunday attendee. Serves in the choir. Prefers SMS reminders. Interested in the youth ministry program starting April.</p>
+    </div>
+
+    <!-- Booking history timeline -->
+    <div>
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Booking history</h3>
+      <ol class="relative border-l-2 border-slate-200 space-y-4 pl-4 ml-1">
+        <li class="relative">
+          <span class="absolute -left-[22px] top-1 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-white"></span>
+          <div class="text-sm font-medium text-slate-900">Baptism preparation session</div>
+          <div class="text-xs text-slate-500 mt-0.5">Mar 12, 2026 · 10:00 AM · Completed</div>
+        </li>
+        <li class="relative">
+          <span class="absolute -left-[22px] top-1 w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-white"></span>
+          <div class="text-sm font-medium text-slate-900">Choir rehearsal</div>
+          <div class="text-xs text-slate-500 mt-0.5">Mar 8, 2026 · 6:00 PM · Completed</div>
+        </li>
+        <li class="relative">
+          <span class="absolute -left-[22px] top-1 w-3 h-3 rounded-full bg-amber-500 ring-4 ring-white"></span>
+          <div class="text-sm font-medium text-slate-900">Confession & counseling</div>
+          <div class="text-xs text-slate-500 mt-0.5">Mar 22, 2026 · 2:00 PM · Pending</div>
+        </li>
+        <li class="relative">
+          <span class="absolute -left-[22px] top-1 w-3 h-3 rounded-full bg-slate-300 ring-4 ring-white"></span>
+          <div class="text-sm font-medium text-slate-900">Membership renewal review</div>
+          <div class="text-xs text-slate-500 mt-0.5">Apr 5, 2026 · 11:00 AM · Scheduled</div>
+        </li>
+      </ol>
+    </div>
+
+    <!-- Active reminders -->
+    <div>
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Active reminders</h3>
+      <ul class="space-y-2">
+        <li class="flex items-start gap-3 p-3 border border-slate-200 rounded-md">
+          <div class="w-2 h-2 rounded-full bg-amber-500 mt-1.5"></div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm text-slate-900">Send confirmation for Mar 22 counseling session</div>
+            <div class="text-xs text-slate-500 mt-1">SMS · 24 hours before</div>
+          </div>
+        </li>
+        <li class="flex items-start gap-3 p-3 border border-slate-200 rounded-md">
+          <div class="w-2 h-2 rounded-full bg-indigo-500 mt-1.5"></div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm text-slate-900">Renewal reminder for annual membership</div>
+            <div class="text-xs text-slate-500 mt-1">Email · 30 days before renewal</div>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <div class="p-4 border-t border-slate-200 flex items-center gap-2">
+    <button class="flex-1 h-10 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50">Edit profile</button>
+    <button class="flex-1 h-10 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700">Message member</button>
+  </div>
+</aside>
+
+<!-- =========================================================
+     MODAL: NEW BOOKING
+     ========================================================= -->
+<div id="bookingModal" class="modal fixed inset-0 z-50 flex items-start md:items-center justify-center p-4 bg-slate-900/40">
+  <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden">
+    <div class="p-5 border-b border-slate-200 flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-900">Book new appointment</h2>
+        <p class="text-xs text-slate-500 mt-0.5">Schedule a member for a service or consultation.</p>
+      </div>
+      <button onclick="closeModal('bookingModal')" class="p-1.5 rounded hover:bg-slate-100 text-slate-500">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form class="p-5 space-y-4" onsubmit="event.preventDefault(); closeModal('bookingModal'); showToast('Booking created');">
+      <div>
+        <label class="block text-xs font-medium text-slate-700 mb-1.5">Member</label>
+        <div class="relative">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Type a name or member ID…" class="w-full h-10 pl-9 pr-3 rounded-md border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+        <p class="text-xs text-slate-500 mt-1">Start typing to search 512 members</p>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1.5">Date</label>
+          <input type="date" class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1.5">Time</label>
+          <input type="time" class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 mb-1.5">Service type</label>
+        <select class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+          <option>Baptism preparation</option>
+          <option>Confession & counseling</option>
+          <option>Marriage counseling</option>
+          <option>Membership renewal</option>
+          <option>Ministry consultation</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 mb-1.5">Notes (optional)</label>
+        <textarea rows="3" placeholder="Any special requirements or context…" class="w-full px-3 py-2 rounded-md border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"></textarea>
+      </div>
+      <label class="flex items-center gap-2 p-3 bg-slate-50 rounded-md cursor-pointer">
+        <input type="checkbox" checked class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+        <div class="flex-1">
+          <div class="text-sm font-medium text-slate-900">Send automated reminder</div>
+          <div class="text-xs text-slate-500">Email + SMS, 24 hours before the appointment</div>
+        </div>
+      </label>
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button type="button" onclick="closeModal('bookingModal')" class="h-10 px-4 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+        <button type="submit" class="h-10 px-4 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 shadow-sm">Create booking</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- =========================================================
+     MODAL: NEW MEMBER
+     ========================================================= -->
+<div id="memberModal" class="modal fixed inset-0 z-50 flex items-start md:items-center justify-center p-4 bg-slate-900/40">
+  <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden">
+    <div class="p-5 border-b border-slate-200 flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-900">Add new member</h2>
+        <p class="text-xs text-slate-500 mt-0.5">You can also import members from a CSV file.</p>
+      </div>
+      <button onclick="closeModal('memberModal')" class="p-1.5 rounded hover:bg-slate-100 text-slate-500">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form class="p-5 space-y-4" onsubmit="event.preventDefault(); closeModal('memberModal'); showToast('Member added');">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1.5">First name</label>
+          <input type="text" required class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1.5">Last name</label>
+          <input type="text" required class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 mb-1.5">Email</label>
+        <input type="email" required class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="member@example.com" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-700 mb-1.5">Phone</label>
+        <input type="tel" class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="+1 (555) 000-0000" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1.5">Membership tier</label>
+          <select class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option>Standard</option>
+            <option>Premium</option>
+            <option>Clergy</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-700 mb-1.5">Join date</label>
+          <input type="date" class="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button type="button" onclick="closeModal('memberModal')" class="h-10 px-4 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+        <button type="submit" class="h-10 px-4 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 shadow-sm">Add member</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- =========================================================
+     TOAST
+     ========================================================= -->
+<div id="toast" class="fixed bottom-6 right-6 bg-slate-900 text-white text-sm px-4 py-3 rounded-lg shadow-lg opacity-0 pointer-events-none transition-opacity duration-200 z-50 flex items-center gap-2">
+  <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+  <span id="toastMessage">Done</span>
+</div>
+
+<!-- =========================================================
+     SCRIPTS
+     ========================================================= -->
+<script>
+// ---------- MOCK DATA ----------
+const bookings = [
+  { id: 'BK-2841', name: 'Selamawit Girma', initials: 'SG', color: 'from-indigo-500 to-indigo-700', service: 'Baptism preparation', dateTime: 'Today, 10:00 AM', status: 'confirmed' },
+  { id: 'BK-2842', name: 'Michael Chen', initials: 'MC', color: 'from-emerald-500 to-emerald-700', service: 'Marriage counseling', dateTime: 'Today, 2:30 PM', status: 'confirmed' },
+  { id: 'BK-2843', name: 'Aster Bekele', initials: 'AB', color: 'from-amber-500 to-amber-700', service: 'Confession & counseling', dateTime: 'Tomorrow, 9:00 AM', status: 'pending' },
+  { id: 'BK-2844', name: 'James Rodriguez', initials: 'JR', color: 'from-rose-500 to-rose-700', service: 'Ministry consultation', dateTime: 'Tomorrow, 11:00 AM', status: 'confirmed' },
+  { id: 'BK-2845', name: 'Tigist Haile', initials: 'TH', color: 'from-purple-500 to-purple-700', service: 'Membership renewal', dateTime: 'Mar 22, 3:00 PM', status: 'pending' },
+  { id: 'BK-2846', name: 'Sarah Johnson', initials: 'SJ', color: 'from-teal-500 to-teal-700', service: 'Baptism preparation', dateTime: 'Mar 24, 10:00 AM', status: 'cancelled' },
+];
+
+const members = [
+  { id: 'M-1024', name: 'Selamawit Girma', initials: 'SG', color: 'from-indigo-500 to-indigo-700', email: 'selamawit.g@example.com', phone: '+1 (415) 555-0142', status: 'active', tier: 'Premium', bookings: 14, lastActive: '2 hours ago' },
+  { id: 'M-1025', name: 'Michael Chen', initials: 'MC', color: 'from-emerald-500 to-emerald-700', email: 'm.chen@example.com', phone: '+1 (415) 555-0198', status: 'active', tier: 'Standard', bookings: 8, lastActive: 'Yesterday' },
+  { id: 'M-1026', name: 'Aster Bekele', initials: 'AB', color: 'from-amber-500 to-amber-700', email: 'aster.b@example.com', phone: '+1 (415) 555-0164', status: 'renewal', tier: 'Standard', bookings: 22, lastActive: '3 days ago' },
+  { id: 'M-1027', name: 'James Rodriguez', initials: 'JR', color: 'from-rose-500 to-rose-700', email: 'j.rodriguez@example.com', phone: '+1 (415) 555-0111', status: 'active', tier: 'Clergy', bookings: 41, lastActive: '1 hour ago' },
+  { id: 'M-1028', name: 'Tigist Haile', initials: 'TH', color: 'from-purple-500 to-purple-700', email: 'tigist.h@example.com', phone: '+1 (415) 555-0173', status: 'active', tier: 'Standard', bookings: 6, lastActive: '5 hours ago' },
+  { id: 'M-1029', name: 'Sarah Johnson', initials: 'SJ', color: 'from-teal-500 to-teal-700', email: 's.johnson@example.com', phone: '+1 (415) 555-0135', status: 'suspended', tier: 'Standard', bookings: 3, lastActive: '2 weeks ago' },
+  { id: 'M-1030', name: 'Daniel Alemu', initials: 'DA', color: 'from-sky-500 to-sky-700', email: 'daniel.a@example.com', phone: '+1 (415) 555-0122', status: 'active', tier: 'Standard', bookings: 11, lastActive: '30 min ago' },
+  { id: 'M-1031', name: 'Priya Patel', initials: 'PP', color: 'from-pink-500 to-pink-700', email: 'priya.p@example.com', phone: '+1 (415) 555-0187', status: 'active', tier: 'Premium', bookings: 19, lastActive: 'Yesterday' },
+];
+
+const reminders = {
+  upcoming: [
+    { title: 'Send Sunday service reminder', target: 'All active members', trigger: '24 hours before Sunday Liturgy', channel: 'email', date: 'Sat, Mar 21 · 8:00 AM', priority: 'medium' },
+    { title: 'Follow up: Baptism paperwork', target: 'Selamawit Girma', trigger: 'Manual', channel: 'sms', date: 'Mon, Mar 23 · 10:00 AM', priority: 'high' },
+    { title: 'Membership renewal reminder', target: '34 members due this month', trigger: '30 days before renewal', channel: 'email', date: 'Wed, Mar 25 · 9:00 AM', priority: 'medium' },
+    { title: 'Choir rehearsal confirmation', target: 'Choir members (18)', trigger: '2 hours before rehearsal', channel: 'push', date: 'Thu, Mar 26 · 4:00 PM', priority: 'low' },
+    { title: 'Send Palm Sunday preparation guide', target: 'All families with children', trigger: '1 week before Palm Sunday', channel: 'email', date: 'Sat, Mar 28 · 9:00 AM', priority: 'medium' },
+    { title: 'Confirm marriage counseling session', target: 'Michael Chen & partner', trigger: '48 hours before booking', channel: 'sms', date: 'Sun, Mar 29 · 2:00 PM', priority: 'high' },
+    { title: 'Monthly giving reminder', target: '287 recurring donors', trigger: '1st of the month', channel: 'email', date: 'Wed, Apr 1 · 8:00 AM', priority: 'low' },
+  ],
+  overdue: [
+    { title: 'Follow up: missed confession appointment', target: 'Aster Bekele', trigger: 'Manual', channel: 'sms', date: 'Overdue by 2 days', priority: 'high' },
+    { title: 'Send renewal notice', target: 'Sarah Johnson', trigger: 'Membership lapsed', channel: 'email', date: 'Overdue by 5 days', priority: 'high' },
+  ],
+  completed: [
+    { title: 'Welcome new member email', target: 'Daniel Alemu', trigger: 'On signup', channel: 'email', date: 'Completed Mar 12', priority: 'low' },
+    { title: 'Ash Wednesday service reminder', target: 'All active members', trigger: '24 hours before service', channel: 'email', date: 'Completed Mar 5', priority: 'medium' },
+  ],
+};
+
+// ---------- RENDERERS ----------
+
+// Status pill with dot
+function statusPill(status) {
+  const map = {
+    confirmed: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Confirmed' },
+    pending: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500', label: 'Pending' },
+    cancelled: { bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-500', label: 'Cancelled' },
+    active: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Active' },
+    renewal: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500', label: 'Renewal due' },
+    suspended: { bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-500', label: 'Suspended' },
+  };
+  const s = map[status];
+  return `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 ${s.bg} ${s.text} text-xs font-medium rounded-md">
+    <span class="w-1.5 h-1.5 rounded-full ${s.dot}"></span>${s.label}
+  </span>`;
+}
+
+function priorityPill(priority) {
+  const map = {
+    high: { bg: 'bg-rose-50', text: 'text-rose-700', label: 'High' },
+    medium: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'Medium' },
+    low: { bg: 'bg-slate-100', text: 'text-slate-600', label: 'Low' },
+  };
+  const s = map[priority];
+  return `<span class="inline-flex items-center px-2 py-0.5 ${s.bg} ${s.text} text-[10px] font-semibold uppercase tracking-wider rounded">${s.label}</span>`;
+}
+
+function channelIcon(channel) {
+  const icons = {
+    email: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+    sms: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    push: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+  };
+  return icons[channel] || '';
+}
+
+function avatar(m, size = 'w-8 h-8', text = 'text-xs') {
+  return `<div class="${size} rounded-full bg-gradient-to-br ${m.color} flex items-center justify-center text-white ${text} font-semibold shrink-0">${m.initials}</div>`;
+}
+
+// Dashboard bookings table
+function renderDashboardBookings() {
+  const tbody = document.getElementById('dashboardBookingsTable');
+  tbody.innerHTML = bookings.map(b => `
+    <tr class="row-hover">
+      <td class="py-3 px-5 tabular text-xs text-slate-500 font-medium">${b.id}</td>
+      <td class="py-3 px-3">
+        <div class="flex items-center gap-2.5">
+          ${avatar(b)}
+          <span class="text-sm font-medium text-slate-900">${b.name}</span>
+        </div>
+      </td>
+      <td class="py-3 px-3 text-sm text-slate-700">${b.service}</td>
+      <td class="py-3 px-3 text-sm text-slate-700 tabular">${b.dateTime}</td>
+      <td class="py-3 px-3">${statusPill(b.status)}</td>
+      <td class="py-3 px-5 text-right">
+        <div class="inline-flex items-center gap-1">
+          <button class="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700" title="View">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button class="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700" title="Reschedule">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M8 16H3v5"/></svg>
+          </button>
+          <button class="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-rose-600" title="Cancel">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Dashboard reminders widget
+function renderDashboardReminders() {
+  const ul = document.getElementById('dashboardReminders');
+  ul.innerHTML = reminders.upcoming.slice(0, 4).map(r => `
+    <li class="p-4 flex items-start gap-3 hover:bg-slate-50">
+      <input type="checkbox" class="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1">
+          ${priorityPill(r.priority)}
+        </div>
+        <div class="text-sm font-medium text-slate-900 truncate">${r.title}</div>
+        <div class="text-xs text-slate-500 mt-1 flex items-center gap-1.5 tabular">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          ${r.date}
+        </div>
+      </div>
+    </li>
+  `).join('');
+}
+
+// Member activity widget
+function renderMemberActivity() {
+  const activities = [
+    { m: members[0], action: 'confirmed a booking', time: '2h ago' },
+    { m: members[6], action: 'joined the congregation', time: '5h ago' },
+    { m: members[3], action: 'updated their profile', time: '1h ago' },
+    { m: members[2], action: 'renewed membership', time: 'Yesterday' },
+  ];
+  const ul = document.getElementById('memberActivity');
+  ul.innerHTML = activities.map(a => `
+    <li class="p-4 flex items-center gap-3 hover:bg-slate-50 cursor-pointer" onclick="openDrawer(members.find(m => m.id === '${a.m.id}'))">
+      ${avatar(a.m)}
+      <div class="flex-1 min-w-0">
+        <div class="text-sm text-slate-900 truncate"><span class="font-medium">${a.m.name}</span> <span class="text-slate-500">${a.action}</span></div>
+        <div class="text-xs text-slate-500 mt-0.5">${a.time}</div>
+      </div>
+    </li>
+  `).join('');
+}
+
+// Members table
+function renderMemberTable() {
+  const tbody = document.getElementById('memberTable');
+  const query = (document.getElementById('memberSearch')?.value || '').toLowerCase();
+  const filtered = members.filter(m =>
+    m.name.toLowerCase().includes(query) ||
+    m.email.toLowerCase().includes(query) ||
+    m.id.toLowerCase().includes(query)
+  );
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="py-16 text-center">
+      <div class="text-slate-400 text-sm mb-2">No members match "${query}"</div>
+      <button onclick="document.getElementById('memberSearch').value=''; renderMemberTable(); renderMemberGrid();" class="text-xs text-indigo-600 font-medium hover:text-indigo-700">Clear search</button>
+    </td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(m => `
+    <tr class="row-hover cursor-pointer" onclick='openDrawer(${JSON.stringify(m)})'>
+      <td class="py-3 px-5" onclick="event.stopPropagation()"><input type="checkbox" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" /></td>
+      <td class="py-3 px-3">
+        <div class="flex items-center gap-3">
+          ${avatar(m, 'w-9 h-9', 'text-sm')}
+          <div>
+            <div class="text-sm font-medium text-slate-900">${m.name}</div>
+            <div class="text-xs text-slate-500 tabular">${m.id} · ${m.tier}</div>
+          </div>
+        </div>
+      </td>
+      <td class="py-3 px-3">
+        <div class="text-sm text-slate-700">${m.email}</div>
+        <div class="text-xs text-slate-500 tabular">${m.phone}</div>
+      </td>
+      <td class="py-3 px-3">${statusPill(m.status)}</td>
+      <td class="py-3 px-3 text-sm text-slate-700 tabular">${m.bookings}</td>
+      <td class="py-3 px-3 text-sm text-slate-500">${m.lastActive}</td>
+      <td class="py-3 px-5 text-right" onclick="event.stopPropagation()">
+        <button class="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Members grid
+function renderMemberGrid() {
+  const container = document.getElementById('memberGridView');
+  const query = (document.getElementById('memberSearch')?.value || '').toLowerCase();
+  const filtered = members.filter(m =>
+    m.name.toLowerCase().includes(query) ||
+    m.email.toLowerCase().includes(query) ||
+    m.id.toLowerCase().includes(query)
+  );
+  container.innerHTML = filtered.map(m => `
+    <div class="bg-white border border-slate-200 rounded-lg p-5 hover:border-slate-300 hover:shadow-sm transition-all cursor-pointer" onclick='openDrawer(${JSON.stringify(m)})'>
+      <div class="flex items-start justify-between mb-3">
+        ${avatar(m, 'w-12 h-12', 'text-base')}
+        ${statusPill(m.status)}
+      </div>
+      <div class="text-sm font-semibold text-slate-900">${m.name}</div>
+      <div class="text-xs text-slate-500 tabular mt-0.5">${m.id} · ${m.tier}</div>
+      <div class="text-xs text-slate-600 mt-3 truncate">${m.email}</div>
+      <div class="text-xs text-slate-500 tabular mt-1">${m.phone}</div>
+      <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+        <span class="text-slate-500">Bookings: <span class="text-slate-900 font-medium tabular">${m.bookings}</span></span>
+        <span class="text-slate-500">${m.lastActive}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Calendar
+function renderCalendar() {
+  const grid = document.getElementById('calendarGrid');
+  // Simple March 2026 layout — March 1 2026 is a Sunday, so previous days from Feb fill Mon-Sat of first row
+  // Actually let's compute: Mar 1 2026 = Sunday. So in Mon-Sun week: prior days Feb 23-28 (Mon-Sat), then Mar 1 (Sun)
+  const days = [];
+  // Feb 23-28 (Mon-Sat)
+  for (let d = 23; d <= 28; d++) days.push({ day: d, other: true });
+  // Mar 1-31
+  for (let d = 1; d <= 31; d++) days.push({ day: d, other: false });
+  // Fill to complete grid (6 rows × 7 = 42)
+  const remaining = 42 - days.length;
+  for (let d = 1; d <= remaining; d++) days.push({ day: d, other: true });
+
+  // Sample events: date -> array of {label, color}
+  const events = {
+    3: [{ label: '10:00 Baptism prep', color: 'bg-emerald-100 text-emerald-800' }],
+    5: [{ label: '2:30 Marriage counsel', color: 'bg-indigo-100 text-indigo-800' }],
+    8: [{ label: '6:00 Choir rehearsal', color: 'bg-emerald-100 text-emerald-800' }, { label: '9:00 Sunday Liturgy', color: 'bg-emerald-100 text-emerald-800' }],
+    12: [{ label: '10:00 Baptism prep', color: 'bg-emerald-100 text-emerald-800' }],
+    15: [{ label: '9:00 Sunday Liturgy', color: 'bg-emerald-100 text-emerald-800' }],
+    18: [{ label: '3:00 Renewal review', color: 'bg-amber-100 text-amber-800' }],
+    20: [{ label: 'Today · 10:00 & 2:30', color: 'bg-indigo-100 text-indigo-800' }],
+    22: [{ label: '9:00 Confession', color: 'bg-amber-100 text-amber-800' }, { label: '3:00 Renewal', color: 'bg-amber-100 text-amber-800' }],
+    24: [{ label: '10:00 Baptism prep', color: 'bg-rose-100 text-rose-800 line-through' }],
+    26: [{ label: '4:00 Choir', color: 'bg-emerald-100 text-emerald-800' }],
+    29: [{ label: '9:00 Palm Sunday', color: 'bg-emerald-100 text-emerald-800' }, { label: '2:00 Counseling', color: 'bg-emerald-100 text-emerald-800' }],
+  };
+
+  grid.innerHTML = days.map((d, i) => {
+    const isToday = !d.other && d.day === 20;
+    const dayEvents = !d.other ? (events[d.day] || []) : [];
+    const eventHtml = dayEvents.slice(0, 2).map(e => `<div class="text-[10px] px-1.5 py-0.5 rounded ${e.color} truncate">${e.label}</div>`).join('');
+    const moreCount = dayEvents.length > 2 ? `<div class="text-[10px] text-slate-500 px-1.5">+${dayEvents.length - 2} more</div>` : '';
+    return `
+      <div class="cal-day border-r border-b border-slate-200 p-1.5 ${d.other ? 'other-month' : ''} ${isToday ? 'today' : ''}" onclick="${!d.other ? `selectCalendarDay(${d.day})` : ''}">
+        <div class="text-xs font-medium ${isToday ? 'text-indigo-700' : d.other ? 'text-slate-400' : 'text-slate-700'} tabular mb-1">${d.day}</div>
+        <div class="space-y-0.5">${eventHtml}${moreCount}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Show today's details in panel by default
+  selectCalendarDay(20);
+}
+
+function selectCalendarDay(day) {
+  const panel = document.getElementById('bookingDetailsPanel');
+  const dayEvents = {
+    20: [
+      { time: '10:00 AM', title: 'Baptism preparation', member: members[0], staff: 'Fr. James Rodriguez', notes: 'Second session. Bring godparent contact info.', status: 'confirmed' },
+      { time: '2:30 PM', title: 'Marriage counseling', member: members[1], staff: 'Fr. James Rodriguez', notes: 'First session with partner.', status: 'confirmed' },
+    ],
+    22: [
+      { time: '9:00 AM', title: 'Confession & counseling', member: members[2], staff: 'Fr. James Rodriguez', notes: 'Follow-up from missed session two weeks ago.', status: 'pending' },
+      { time: '3:00 PM', title: 'Membership renewal review', member: members[4], staff: 'Deacon Peter', notes: '', status: 'pending' },
+    ],
+    3: [
+      { time: '10:00 AM', title: 'Baptism preparation', member: members[0], staff: 'Fr. James Rodriguez', notes: 'First session.', status: 'confirmed' },
+    ],
+    29: [
+      { time: '9:00 AM', title: 'Palm Sunday Liturgy', member: null, staff: 'Full clergy', notes: 'Extended service. Extra chairs needed.', status: 'confirmed' },
+      { time: '2:00 PM', title: 'Marriage counseling', member: members[1], staff: 'Fr. James Rodriguez', notes: 'Follow-up.', status: 'confirmed' },
+    ],
+  };
+  const events = dayEvents[day];
+  if (!events || events.length === 0) {
+    panel.innerHTML = `
+      <div class="p-8 text-center">
+        <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-100 flex items-center justify-center">
+          <svg class="w-6 h-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div class="text-sm font-medium text-slate-900 mb-1">No bookings on Mar ${day}</div>
+        <div class="text-xs text-slate-500 mb-4">This day is free.</div>
+        <button onclick="openModal('bookingModal')" class="text-xs font-medium text-indigo-600 hover:text-indigo-700">+ Book an appointment</button>
+      </div>
+    `;
+    return;
+  }
+  panel.innerHTML = `
+    <div class="p-5">
+      <div class="text-sm font-semibold text-slate-900 mb-4 tabular">March ${day}, 2026 · ${events.length} booking${events.length > 1 ? 's' : ''}</div>
+      <div class="space-y-4">
+        ${events.map(e => `
+          <div class="p-4 border border-slate-200 rounded-lg hover:border-indigo-200 hover:bg-indigo-50/30 transition-colors">
+            <div class="flex items-start justify-between gap-2 mb-3">
+              <div>
+                <div class="text-xs text-slate-500 tabular">${e.time}</div>
+                <div class="text-sm font-semibold text-slate-900 mt-0.5">${e.title}</div>
+              </div>
+              ${statusPill(e.status)}
+            </div>
+            ${e.member ? `
+              <div class="flex items-center gap-2.5 mb-2 pb-3 border-b border-slate-100">
+                ${avatar(e.member)}
+                <div class="min-w-0">
+                  <div class="text-sm text-slate-900 truncate">${e.member.name}</div>
+                  <div class="text-xs text-slate-500 tabular truncate">${e.member.phone}</div>
+                </div>
+              </div>
+            ` : ''}
+            <div class="text-xs text-slate-500 mb-1">Assigned to</div>
+            <div class="text-sm text-slate-700 mb-3">${e.staff}</div>
+            ${e.notes ? `
+              <div class="text-xs text-slate-500 mb-1">Notes</div>
+              <div class="text-sm text-slate-700 mb-3">${e.notes}</div>
+            ` : ''}
+            <button onclick="showToast('Reminder queued to send')" class="w-full h-8 text-xs font-medium border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md flex items-center justify-center gap-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              Send reminder now
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Reminders
+function renderReminders(tab = 'upcoming') {
+  const ul = document.getElementById('reminderList');
+  const list = reminders[tab];
+  if (list.length === 0) {
+    ul.innerHTML = `<li class="p-16 text-center text-sm text-slate-500">Nothing here yet.</li>`;
+    return;
+  }
+  ul.innerHTML = list.map(r => `
+    <li class="p-5 hover:bg-slate-50">
+      <div class="flex items-start gap-4">
+        <div class="w-9 h-9 rounded-md ${tab === 'overdue' ? 'bg-rose-50 text-rose-600' : tab === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'} flex items-center justify-center shrink-0">
+          ${channelIcon(r.channel)}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <div class="text-sm font-semibold text-slate-900">${r.title}</div>
+            ${priorityPill(r.priority)}
+          </div>
+          <div class="text-xs text-slate-500 space-y-0.5">
+            <div><span class="text-slate-700 font-medium">To:</span> ${r.target}</div>
+            <div><span class="text-slate-700 font-medium">Trigger:</span> ${r.trigger} · <span class="capitalize">${r.channel}</span></div>
+            <div class="tabular"><span class="text-slate-700 font-medium">When:</span> ${r.date}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button class="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700" title="Edit">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-rose-600" title="Delete">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </div>
+    </li>
+  `).join('');
+}
+
+// ---------- INTERACTIONS ----------
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  document.getElementById(`screen-${name}`).classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll(`[data-screen="${name}"]`).forEach(n => n.classList.add('active'));
+  // Close mobile sidebar on nav
+  if (window.innerWidth < 768) closeMobileSidebar();
+  // Scroll main to top
+  document.querySelector('main').scrollTop = 0;
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  if (window.innerWidth < 768) {
+    sidebar.classList.toggle('mobile-open');
+    document.getElementById('mobileBackdrop').classList.toggle('open');
+  } else {
+    sidebar.classList.toggle('sidebar-collapsed');
+  }
+}
+
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('mobileBackdrop').classList.remove('open');
+}
+
+function setMemberView(view) {
+  const table = document.getElementById('memberTableView');
+  const grid = document.getElementById('memberGridView');
+  const tBtn = document.getElementById('viewToggleTable');
+  const gBtn = document.getElementById('viewToggleGrid');
+  if (view === 'table') {
+    table.classList.remove('hidden');
+    grid.classList.add('hidden');
+    tBtn.classList.add('text-slate-700', 'bg-white', 'shadow-sm');
+    tBtn.classList.remove('text-slate-500');
+    gBtn.classList.remove('text-slate-700', 'bg-white', 'shadow-sm');
+    gBtn.classList.add('text-slate-500');
+  } else {
+    table.classList.add('hidden');
+    grid.classList.remove('hidden');
+    gBtn.classList.add('text-slate-700', 'bg-white', 'shadow-sm');
+    gBtn.classList.remove('text-slate-500');
+    tBtn.classList.remove('text-slate-700', 'bg-white', 'shadow-sm');
+    tBtn.classList.add('text-slate-500');
+  }
+}
+
+function setReminderTab(tab) {
+  ['Upcoming', 'Overdue', 'Completed'].forEach(t => {
+    const el = document.getElementById('tab' + t);
+    el.classList.remove('text-slate-900', 'border-indigo-600', 'border-b-2');
+    el.classList.add('text-slate-500');
+  });
+  const active = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
+  active.classList.remove('text-slate-500');
+  active.classList.add('text-slate-900', 'border-b-2', 'border-indigo-600');
+  renderReminders(tab);
+}
+
+function openDrawer(member) {
+  document.getElementById('memberDrawer').classList.add('open');
+  document.getElementById('drawerBackdrop').classList.add('open');
+  if (member) {
+    document.getElementById('drawerName').textContent = member.name;
+    document.getElementById('drawerEmail').textContent = member.email;
+    const av = document.getElementById('drawerAvatar');
+    av.textContent = member.initials;
+    av.className = `w-12 h-12 rounded-full bg-gradient-to-br ${member.color} flex items-center justify-center text-white text-lg font-semibold shrink-0`;
+    document.getElementById('drawerBookings').textContent = member.bookings;
+  }
+}
+
+function closeDrawer() {
+  document.getElementById('memberDrawer').classList.remove('open');
+  document.getElementById('drawerBackdrop').classList.remove('open');
+}
+
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastMessage').textContent = msg;
+  t.classList.remove('opacity-0');
+  t.classList.add('opacity-100');
+  setTimeout(() => {
+    t.classList.remove('opacity-100');
+    t.classList.add('opacity-0');
+  }, 2400);
+}
+
+// Keyboard shortcut for search
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    document.getElementById('globalSearch').focus();
+  }
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+    closeDrawer();
+  }
+});
+
+// Debounced member search
+let searchTimer;
+document.getElementById('memberSearch')?.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    renderMemberTable();
+    renderMemberGrid();
+  }, 120);
+});
+
+// ---------- INIT ----------
+renderDashboardBookings();
+renderDashboardReminders();
+renderMemberActivity();
+renderMemberTable();
+renderMemberGrid();
+renderCalendar();
+renderReminders('upcoming');
+</script>
+
+</body>
+</html>
